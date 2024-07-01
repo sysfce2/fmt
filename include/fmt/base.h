@@ -8,20 +8,22 @@
 #ifndef FMT_BASE_H_
 #define FMT_BASE_H_
 
-#include <limits.h>  // CHAR_BIT
-#include <stdio.h>   // FILE
-#include <string.h>  // strlen
+#if defined(FMT_IMPORT_STD) && !defined(FMT_MODULE)
+#  define FMT_MODULE
+#endif
 
-#ifndef FMT_IMPORT_STD
+#ifndef FMT_MODULE
+#  include <limits.h>  // CHAR_BIT
+#  include <stdio.h>   // FILE
+#  include <string.h>  // strlen
+
 // <cstddef> is also included transitively from <type_traits>.
 #  include <cstddef>      // std::byte
 #  include <type_traits>  // std::enable_if
-#else
-import std;
 #endif
 
 // The fmt library version in the form major * 10000 + minor * 100 + patch.
-#define FMT_VERSION 100202
+#define FMT_VERSION 110000
 
 // Detect compiler versions.
 #if defined(__clang__) && !defined(__ibmxl__)
@@ -144,6 +146,8 @@ import std;
 #  define FMT_USE_NONTYPE_TEMPLATE_ARGS 1
 #elif defined(__cpp_nontype_template_args) && \
     __cpp_nontype_template_args >= 201911L
+#  define FMT_USE_NONTYPE_TEMPLATE_ARGS 1
+#elif FMT_CLANG_VERSION >= 1200 && FMT_CPLUSPLUS >= 202002L
 #  define FMT_USE_NONTYPE_TEMPLATE_ARGS 1
 #else
 #  define FMT_USE_NONTYPE_TEMPLATE_ARGS 0
@@ -1756,7 +1760,7 @@ template <typename Context> class basic_format_arg {
    * `vis(value)` will be called with the value of type `double`.
    */
   template <typename Visitor>
-  FMT_CONSTEXPR auto visit(Visitor&& vis) -> decltype(vis(0)) {
+  FMT_CONSTEXPR auto visit(Visitor&& vis) const -> decltype(vis(0)) {
     switch (type_) {
     case detail::type::none_type:
       break;
@@ -2019,7 +2023,7 @@ constexpr auto make_format_args(T&... args)
  *
  * **Example**:
  *
- *     fmt::print("Elapsed time: {s:.2f} seconds", fmt::arg("s", 1.23));
+ *     fmt::print("The answer is {answer}.", fmt::arg("answer", 42));
  */
 template <typename Char, typename T>
 inline auto arg(const Char* name, const T& arg) -> detail::named_arg<Char, T> {
@@ -2773,6 +2777,11 @@ void check_format_string(S format_str) {
   ignore_unused(error);
 }
 
+// Report truncation to prevent silent data loss.
+inline void report_truncation(bool truncated) {
+  if (truncated) report_error("output is truncated");
+}
+
 // Use vformat_args and avoid type_identity to keep symbols short and workaround
 // a GCC <= 4.8 bug.
 template <typename Char = char> struct vformat_args {
@@ -2952,9 +2961,16 @@ struct format_to_result {
   /// Specifies if the output was truncated.
   bool truncated;
 
-  FMT_CONSTEXPR operator OutputIt&() & noexcept { return out; }
-  FMT_CONSTEXPR operator const OutputIt&() const& noexcept { return out; }
-  FMT_CONSTEXPR operator OutputIt&&() && noexcept {
+  FMT_CONSTEXPR operator OutputIt&() & {
+    detail::report_truncation(truncated);
+    return out;
+  }
+  FMT_CONSTEXPR operator const OutputIt&() const& {
+    detail::report_truncation(truncated);
+    return out;
+  }
+  FMT_CONSTEXPR operator OutputIt&&() && {
+    detail::report_truncation(truncated);
     return static_cast<OutputIt&&>(out);
   }
 };

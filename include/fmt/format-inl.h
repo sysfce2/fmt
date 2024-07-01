@@ -8,16 +8,16 @@
 #ifndef FMT_FORMAT_INL_H_
 #define FMT_FORMAT_INL_H_
 
-#ifndef FMT_IMPORT_STD
+#ifndef FMT_MODULE
 #  include <algorithm>
+#  include <cerrno>  // errno
+#  include <climits>
 #  include <cmath>
 #  include <exception>
-#endif
-#include <cerrno>  // errno
-#include <climits>
 
-#if !defined(FMT_STATIC_THOUSANDS_SEPARATOR) && !defined(FMT_IMPORT_STD)
-#  include <locale>
+#  if !defined(FMT_STATIC_THOUSANDS_SEPARATOR)
+#    include <locale>
+#  endif
 #endif
 
 #if defined(_WIN32) && !defined(FMT_USE_WRITE_CONSOLE)
@@ -1600,14 +1600,21 @@ template <typename F> class fallback_file : public file_base<F> {
   }
 };
 
-template <typename F, FMT_ENABLE_IF(sizeof(F::_p) != 0)>
+#ifndef FMT_USE_FALLBACK_FILE
+#  define FMT_USE_FALLBACK_FILE 1
+#endif
+
+template <typename F,
+          FMT_ENABLE_IF(sizeof(F::_p) != 0 && !FMT_USE_FALLBACK_FILE)>
 auto get_file(F* f, int) -> apple_file<F> {
   return f;
 }
-template <typename F, FMT_ENABLE_IF(sizeof(F::_IO_read_ptr) != 0)>
+template <typename F,
+          FMT_ENABLE_IF(sizeof(F::_IO_read_ptr) != 0 && !FMT_USE_FALLBACK_FILE)>
 inline auto get_file(F* f, int) -> glibc_file<F> {
   return f;
 }
+
 inline auto get_file(FILE* f, ...) -> fallback_file<FILE> { return f; }
 
 using file_ref = decltype(get_file(static_cast<FILE*>(nullptr), 0));
